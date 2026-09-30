@@ -5,7 +5,7 @@ const {
   login,
   logout,
   getMe,
-} = require("../controllers/authcontroller");
+} = require("../contollers/authcontoller.js");
 
 const { protect } = require("../middleware/authmiddleware");
 
