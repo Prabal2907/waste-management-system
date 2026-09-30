@@ -5,15 +5,18 @@ const {
   login,
   logout,
   getMe,
-} = require("../contollers/authcontoller.js");
+} = require("../controllers/authcontroller");
 
-const { protect } = require("../middleware/authmiddleware");
+const { protect } = require("../middlewares/authmiddlewares");
 
 const router = express.Router();
 
+// Public routes
 router.post("/register", register);
 router.post("/login", login);
 router.post("/logout", logout);
+
+// Protected route
 router.get("/me", protect, getMe);
 
 module.exports = router;
