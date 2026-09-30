@@ -27,8 +27,8 @@ connectDB();
 // ---------------------------------------------------------------
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true, // allows the browser to send/receive the auth cookie
+    origin: "https://waste-management-system-lake.vercel.app",
+    credentials: true,
   }),
 );
 
