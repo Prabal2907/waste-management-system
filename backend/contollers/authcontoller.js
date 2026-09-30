@@ -12,26 +12,29 @@ const isProduction = process.env.NODE_ENV === "production";
 const cookieOptions = {
   httpOnly: true, // JavaScript in the browser cannot read this cookie
   secure: isProduction, // only sent over HTTPS in production
-  // "none" is needed if your frontend and backend are on different domains
-  // in production. Use "strict" or "lax" if they share the same site.
   sameSite: isProduction ? "none" : "lax",
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
 };
 
 // Create a signed JWT containing only the user's id and role
 const generateToken = (user) => {
-  return jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || "7d",
-  });
+  return jwt.sign(
+    { id: user._id, role: user.role?.toLowerCase() },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+    },
+  );
 };
 
 // Build a safe user object (never includes the password)
 const sanitizeUser = (user) => ({
   id: user._id,
+  _id: user._id,
   name: user.name,
   email: user.email,
   phone: user.phone,
-  role: user.role,
+  role: user.role?.toLowerCase() || "citizen",
   address: user.address,
   location: user.location,
   profileImage: user.profileImage,
@@ -47,15 +50,13 @@ const getValidationMessage = (error) =>
     .join(", ");
 
 // ---------------------------------------------------------------
-// @desc    Register a new citizen
+// @desc    Register a new user (citizen / collector / admin)
 // @route   POST /api/auth/register
 // @access  Public
 // ---------------------------------------------------------------
 exports.register = async (req, res) => {
   try {
-    // Only pick the fields we allow. "role" and "isActive" are
-    // intentionally NOT read from req.body.
-    const { name, email, password, phone, address, location } = req.body;
+    const { name, email, password, phone, role, address, location } = req.body;
 
     // Basic checks
     if (!name || !email || !password || !phone) {
@@ -72,6 +73,13 @@ exports.register = async (req, res) => {
       });
     }
 
+    // Validate and normalize role (default to "citizen" if not supplied)
+    const validRoles = ["citizen", "collector", "admin"];
+    const normalizedRole =
+      role && validRoles.includes(role.toLowerCase())
+        ? role.toLowerCase()
+        : "citizen";
+
     // Check if the email is already registered
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -85,15 +93,16 @@ exports.register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create the user. Role is ALWAYS "citizen" here.
+    // Create the user with the requested role
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
       password: hashedPassword,
-      phone,
+      phone: phone.trim(),
       address,
       location,
-      role: "citizen",
+      role: normalizedRole,
+      isActive: true,
     });
 
     // Log the user in right away
@@ -106,7 +115,6 @@ exports.register = async (req, res) => {
       user: sanitizeUser(user),
     });
   } catch (error) {
-    // Mongoose validation errors (e.g. name too short)
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
@@ -114,7 +122,6 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Duplicate key error (two requests registering the same email at once)
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -146,13 +153,10 @@ exports.login = async (req, res) => {
       });
     }
 
-    // password has `select: false` in the model, so we must ask for it
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password",
-    );
+    const user = await User.findOne({
+      email: email.toLowerCase().trim(),
+    }).select("+password");
 
-    // Same message for "no user" and "wrong password" so attackers
-    // can't tell which emails are registered
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -198,8 +202,6 @@ exports.login = async (req, res) => {
 // @access  Public
 // ---------------------------------------------------------------
 exports.logout = (req, res) => {
-  // Options must match the ones used when setting the cookie
-  // (except maxAge) or the browser may not remove it
   res.clearCookie("token", {
     httpOnly: cookieOptions.httpOnly,
     secure: cookieOptions.secure,
@@ -215,11 +217,10 @@ exports.logout = (req, res) => {
 // ---------------------------------------------------------------
 // @desc    Get the currently logged-in user
 // @route   GET /api/auth/me
-// @access  Private (needs auth middleware that sets req.user)
+// @access  Private
 // ---------------------------------------------------------------
 exports.getMe = async (req, res) => {
   try {
-    // req.user is set by the auth middleware after verifying the JWT
     const user = await User.findById(req.user.id);
 
     if (!user) {
@@ -242,23 +243,28 @@ exports.getMe = async (req, res) => {
   }
 };
 
-// GET /api/users/collectors  (admin only)
+// ---------------------------------------------------------------
+// @desc    Get all collectors (admin only)
+// @route   GET /api/users/collectors
+// @access  Private (Admin)
+// ---------------------------------------------------------------
 exports.getCollectors = async (req, res) => {
   try {
     const collectors = await User.find({
       role: "collector",
       isActive: true,
     }).select("name email phone");
-    return res
-      .status(200)
-      .json({ success: true, count: collectors.length, collectors });
+
+    return res.status(200).json({
+      success: true,
+      count: collectors.length,
+      collectors,
+    });
   } catch (error) {
     console.error("getCollectors error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error while fetching collectors",
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching collectors",
+    });
   }
 };

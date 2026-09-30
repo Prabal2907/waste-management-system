@@ -20,14 +20,6 @@ const inputClass =
   "focus:border-emerald-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-emerald-700/15 " +
   "disabled:bg-stone-100 disabled:text-stone-500";
 
-// Where each role goes after logging in. Change these to match your routes.
-const roleRoutes = {
-  admin: "/admin",
-  collector: "/collector",
-  citizen: "/dashboard",
-};
-
-// Defined outside Login so inputs don't lose focus on every re-render
 function Field({ label, id, icon: Icon, ...inputProps }) {
   return (
     <div>
@@ -82,27 +74,33 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // The backend sets the login cookie. We only need the user info.
       const response = await api.post("/auth/login", {
         email: formData.email.trim(),
         password: formData.password,
       });
 
       if (response.data && response.data.success) {
-        const { user } = response.data;
+        const user = response.data.user;
+        const role = user?.role ? user.role.toLowerCase() : "citizen";
 
         setSuccess(
-          `Welcome back, ${user.name}. Taking you to your dashboard...`,
+          `Welcome back, ${user.name} (${role}). Taking you to your dashboard...`,
         );
         setFormData((prev) => ({ ...prev, password: "" }));
 
+        // Route admins directly to /admin, others to /home
+        const targetRoute = role === "admin" ? "/admin" : "/home";
+
         setTimeout(() => {
-          navigate(roleRoutes[user.role] || "/", { replace: true });
-        }, 800);
+          navigate(targetRoute, { replace: true });
+        }, 600);
+      } else {
+        setError(
+          response.data?.message || "Login failed. Please check credentials.",
+        );
       }
     } catch (err) {
       if (err.response && err.response.data && err.response.data.message) {
-        // Covers wrong credentials (401) and deactivated accounts (403)
         setError(err.response.data.message);
       } else if (err.request) {
         setError("Network error. Unable to connect to the CleanCity server.");
@@ -118,7 +116,7 @@ export default function Login() {
 
   return (
     <div className="flex min-h-screen bg-[#f6f3ee]">
-      {/* Left panel: visible on large screens only */}
+      {/* Left panel */}
       <aside className="relative hidden w-[46%] overflow-hidden lg:flex">
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-800" />
         <div

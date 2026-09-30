@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  Briefcase,
   Leaf,
   Loader2,
   Lock,
@@ -10,6 +11,7 @@ import {
   Recycle,
   ShieldCheck,
   User,
+  UserCheck,
 } from "lucide-react";
 import api from "../services/api.js";
 
@@ -20,7 +22,6 @@ const inputClass =
   "focus:border-emerald-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-emerald-700/15 " +
   "disabled:bg-stone-100 disabled:text-stone-500";
 
-// Defined outside Register so inputs don't lose focus on every re-render
 function Field({ label, id, optional, icon: Icon, ...inputProps }) {
   return (
     <div>
@@ -58,9 +59,9 @@ export default function Register() {
     name: "",
     email: "",
     phone: "",
+    role: "citizen", // Default role
     password: "",
     confirmPassword: "",
-    // Address fields match the backend User model
     houseNo: "",
     street: "",
     city: "",
@@ -68,7 +69,6 @@ export default function Register() {
     pincode: "",
   });
 
-  // { latitude, longitude } or null
   const [coords, setCoords] = useState(null);
   const [locating, setLocating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -83,7 +83,6 @@ export default function Register() {
     if (error) setError("");
   };
 
-  // Ask the browser for the user's current position
   const handleGetLocation = () => {
     if (!navigator.geolocation) {
       setError("Your browser does not support location access.");
@@ -115,7 +114,6 @@ export default function Register() {
     setError("");
     setSuccess("");
 
-    // Client-side validation (matches backend rules)
     if (
       !formData.name.trim() ||
       !formData.email.trim() ||
@@ -154,7 +152,6 @@ export default function Register() {
     setLoading(true);
 
     try {
-      // Build the address object, keeping only the fields the user filled in
       const address = Object.fromEntries(
         Object.entries({
           houseNo: formData.houseNo.trim(),
@@ -165,11 +162,11 @@ export default function Register() {
         }).filter(([, value]) => value),
       );
 
-      // confirmPassword is never sent to the backend
       const payload = {
         name: formData.name.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim(),
+        role: formData.role, // Pass selected role
         password: formData.password,
       };
 
@@ -179,14 +176,13 @@ export default function Register() {
       const response = await api.post("/auth/register", payload);
 
       if (response.data && response.data.success) {
-        setSuccess("Account created. Redirecting you to log in...");
+        setSuccess("Account created successfully! Redirecting to login...");
 
-        // Clear sensitive fields from state
         setFormData((prev) => ({ ...prev, password: "", confirmPassword: "" }));
 
         setTimeout(() => {
           navigate("/login");
-        }, 1500);
+        }, 1200);
       }
     } catch (err) {
       if (err.response && err.response.data && err.response.data.message) {
@@ -205,7 +201,7 @@ export default function Register() {
 
   return (
     <div className="flex min-h-screen bg-[#f6f3ee]">
-      {/* Left panel: visible on large screens only */}
+      {/* Left panel */}
       <aside className="relative hidden w-[42%] overflow-hidden lg:flex">
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-800" />
         <div
@@ -245,7 +241,7 @@ export default function Register() {
               {[
                 { icon: MapPin, text: "Pin issues from your street" },
                 { icon: Recycle, text: "Follow every pickup to resolved" },
-                { icon: ShieldCheck, text: "A free account for citizens" },
+                { icon: ShieldCheck, text: "Role-based access for every team" },
               ].map(({ icon: Icon, text }) => (
                 <li
                   key={text}
@@ -327,7 +323,7 @@ export default function Register() {
                   autoComplete="name"
                   value={formData.name}
                   onChange={handleChange}
-                  placeholder="Prabal Dwivedi"
+                  placeholder="Your Name"
                   required
                 />
                 <Field
@@ -352,6 +348,36 @@ export default function Register() {
                   placeholder="9876543210"
                   required
                 />
+
+                {/* Role selection dropdown */}
+                <div>
+                  <label
+                    htmlFor="role"
+                    className="mb-1.5 block text-[13px] font-medium tracking-wide text-stone-600"
+                  >
+                    Select your role
+                  </label>
+                  <div className="relative">
+                    <UserCheck className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                    <select
+                      id="role"
+                      name="role"
+                      value={formData.role}
+                      onChange={handleChange}
+                      className={`${inputClass} pl-11`}
+                    >
+                      <option value="citizen">
+                        Citizen (Report & Track Waste)
+                      </option>
+                      <option value="collector">
+                        Collector (Field Worker)
+                      </option>
+                      <option value="admin">
+                        Administrator (Admin Dashboard)
+                      </option>
+                    </select>
+                  </div>
+                </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field
@@ -415,7 +441,7 @@ export default function Register() {
                       autoComplete="address-line1"
                       value={formData.street}
                       onChange={handleChange}
-                      placeholder="Mall Road"
+                      placeholder="Street name"
                     />
                   </div>
                 </div>
@@ -428,7 +454,7 @@ export default function Register() {
                     autoComplete="address-level2"
                     value={formData.city}
                     onChange={handleChange}
-                    placeholder="Kanpur"
+                    placeholder="City"
                   />
                   <Field
                     label="State"
@@ -437,7 +463,7 @@ export default function Register() {
                     autoComplete="address-level1"
                     value={formData.state}
                     onChange={handleChange}
-                    placeholder="Uttar Pradesh"
+                    placeholder="State"
                   />
                   <Field
                     label="Pincode"
@@ -448,7 +474,7 @@ export default function Register() {
                     autoComplete="postal-code"
                     value={formData.pincode}
                     onChange={handleChange}
-                    placeholder="208001"
+                    placeholder="123456"
                   />
                 </div>
               </fieldset>
@@ -462,7 +488,7 @@ export default function Register() {
                   </span>
                 </legend>
                 <p className="mb-3 text-sm text-stone-500">
-                  Saving your location helps us match complaints to your area.
+                  Saving your location helps match complaints to your area.
                 </p>
 
                 {coords ? (

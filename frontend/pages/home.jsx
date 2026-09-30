@@ -1,17 +1,25 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
+  ArrowRight,
+  BookOpen,
   CheckCircle2,
   ClipboardList,
   FolderOpen,
+  Globe,
   Leaf,
   Loader2,
   LogOut,
+  Map,
   MapPin,
+  Recycle,
   Search,
+  ShieldAlert,
+  Sparkles,
   X,
 } from "lucide-react";
 import api from "../services/api.js";
+import CollectorNotifications from "../pages/CollectorNotifications.jsx";
 
 const STATUSES = [
   "pending",
@@ -21,7 +29,9 @@ const STATUSES = [
   "resolved",
   "rejected",
 ];
+
 const COLLECTOR_STATUSES = ["in-progress", "resolved"];
+
 const CATEGORIES = {
   garbage: "Garbage",
   illegal_dumping: "Illegal dumping",
@@ -29,6 +39,7 @@ const CATEGORIES = {
   dead_animal: "Dead animal",
   other: "Other",
 };
+
 const statusStyle = {
   pending: "bg-amber-100 text-amber-800",
   verified: "bg-sky-100 text-sky-800",
@@ -37,11 +48,13 @@ const statusStyle = {
   resolved: "bg-emerald-100 text-emerald-800",
   rejected: "bg-rose-100 text-rose-800",
 };
+
 const priorityStyle = {
   high: "text-rose-700",
   medium: "text-amber-700",
   low: "text-stone-500",
 };
+
 const inputClass =
   "w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm shadow-sm " +
   "placeholder:text-stone-400 transition " +
@@ -57,6 +70,7 @@ function Modal({ title, onClose, children }) {
           <h2 className="text-lg font-semibold tracking-tight text-stone-900">
             {title}
           </h2>
+
           <button
             onClick={onClose}
             aria-label="Close"
@@ -65,6 +79,7 @@ function Modal({ title, onClose, children }) {
             <X className="h-4 w-4" />
           </button>
         </div>
+
         {children}
       </div>
     </div>
@@ -74,7 +89,9 @@ function Modal({ title, onClose, children }) {
 function StatusBadge({ status }) {
   return (
     <span
-      className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusStyle[status]}`}
+      className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+        statusStyle[status] || "bg-stone-100 text-stone-800"
+      }`}
     >
       {status}
     </span>
@@ -91,11 +108,18 @@ function CreateForm({ onSubmit, onError }) {
     latitude: "",
     longitude: "",
   });
-  const set = (e) => setF((p) => ({ ...p, [e.target.name]: e.target.value }));
+
+  const set = (e) =>
+    setF((p) => ({
+      ...p,
+      [e.target.name]: e.target.value,
+    }));
 
   const useMyLocation = () => {
-    if (!navigator.geolocation)
+    if (!navigator.geolocation) {
       return onError("Your browser does not support location access.");
+    }
+
     navigator.geolocation.getCurrentPosition(
       (pos) =>
         setF((p) => ({
@@ -109,17 +133,24 @@ function CreateForm({ onSubmit, onError }) {
 
   const submit = (e) => {
     e.preventDefault();
+
     const latitude = parseFloat(f.latitude);
     const longitude = parseFloat(f.longitude);
-    if (Number.isNaN(latitude) || Number.isNaN(longitude))
+
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
       return onError("Add the location of the problem.");
+    }
+
     onSubmit({
       title: f.title.trim(),
       description: f.description.trim(),
       category: f.category,
       address: f.address.trim(),
       image: f.image.trim() || undefined,
-      location: { latitude, longitude },
+      location: {
+        latitude,
+        longitude,
+      },
     });
   };
 
@@ -134,6 +165,7 @@ function CreateForm({ onSubmit, onError }) {
         placeholder="What is the problem?"
         className={inputClass}
       />
+
       <textarea
         name="description"
         value={f.description}
@@ -144,6 +176,7 @@ function CreateForm({ onSubmit, onError }) {
         placeholder="Describe it (at least 10 characters)"
         className={inputClass}
       />
+
       <select
         name="category"
         value={f.category}
@@ -156,6 +189,7 @@ function CreateForm({ onSubmit, onError }) {
           </option>
         ))}
       </select>
+
       <input
         name="address"
         value={f.address}
@@ -164,6 +198,7 @@ function CreateForm({ onSubmit, onError }) {
         placeholder="Street address"
         className={inputClass}
       />
+
       <input
         name="image"
         value={f.image}
@@ -171,6 +206,7 @@ function CreateForm({ onSubmit, onError }) {
         placeholder="Photo URL (optional)"
         className={inputClass}
       />
+
       <div className="grid grid-cols-2 gap-3">
         <input
           name="latitude"
@@ -179,6 +215,7 @@ function CreateForm({ onSubmit, onError }) {
           placeholder="Latitude"
           className={inputClass}
         />
+
         <input
           name="longitude"
           value={f.longitude}
@@ -187,6 +224,7 @@ function CreateForm({ onSubmit, onError }) {
           className={inputClass}
         />
       </div>
+
       <button
         type="button"
         onClick={useMyLocation}
@@ -195,6 +233,7 @@ function CreateForm({ onSubmit, onError }) {
         <MapPin className="h-3.5 w-3.5" />
         Use my current location
       </button>
+
       <button
         type="submit"
         className="w-full rounded-xl bg-emerald-800 py-2.5 font-semibold text-white shadow-[0_10px_24px_-10px_rgba(6,95,70,0.8)] transition hover:bg-emerald-900"
@@ -226,30 +265,43 @@ export default function Home() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Load the user, then their complaints
+  const role = user?.role ? user.role.toLowerCase() : "";
+
+  const isAdmin = role === "admin";
+  const isCollector = role === "collector";
+  const isCitizen = role === "citizen";
+
   useEffect(() => {
     const init = async () => {
       try {
         const me = await api.get("/auth/me");
         const u = me.data.user;
+
         setUser(u);
 
-        const list = await api.get(
-          u.role === "admin" ? "/complaints" : "/complaints/my",
-        );
-        setComplaints(list.data.complaints);
+        const currentRole = u.role?.toLowerCase();
 
-        if (u.role === "admin") {
+        const list = await api.get(
+          currentRole === "admin" ? "/complaints" : "/complaints/my",
+        );
+
+        setComplaints(list.data.complaints || []);
+
+        if (currentRole === "admin") {
           const res = await api.get("/users/collectors");
-          setCollectors(res.data.collectors);
+          setCollectors(res.data.collectors || []);
         }
       } catch (err) {
-        if (err.response?.status === 401) navigate("/login", { replace: true });
-        else setPageError(errMsg(err, "Could not load data from the server."));
+        if (err.response?.status === 401) {
+          navigate("/login", { replace: true });
+        } else {
+          setPageError(errMsg(err, "Could not load data from the server."));
+        }
       } finally {
         setLoading(false);
       }
     };
+
     init();
   }, [navigate]);
 
@@ -264,11 +316,12 @@ export default function Home() {
   const replaceComplaint = (c) =>
     setComplaints((prev) => prev.map((x) => (x._id === c._id ? c : x)));
 
-  // One helper for every API action
   const run = async (request, okMessage, onDone) => {
     try {
       const res = await request();
+
       onDone(res.data.complaint);
+
       flash(okMessage);
     } catch (err) {
       flash(errMsg(err, "Something went wrong."), "error");
@@ -287,7 +340,10 @@ export default function Home() {
 
   const assign = (id, collectorId) =>
     run(
-      () => api.patch(`/complaints/${id}/assign`, { collectorId }),
+      () =>
+        api.patch(`/complaints/${id}/assign`, {
+          collectorId,
+        }),
       "Complaint assigned",
       (c) => {
         replaceComplaint(c);
@@ -307,7 +363,9 @@ export default function Home() {
 
   const stats = useMemo(() => {
     const resolved = complaints.filter((c) => c.status === "resolved").length;
+
     const rejected = complaints.filter((c) => c.status === "rejected").length;
+
     return {
       total: complaints.length,
       resolved,
@@ -317,27 +375,30 @@ export default function Home() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+
     return complaints.filter(
       (c) =>
         (statusFilter === "all" || c.status === statusFilter) &&
         (!q ||
-          c.title.toLowerCase().includes(q) ||
-          c.address.toLowerCase().includes(q)),
+          c.title?.toLowerCase().includes(q) ||
+          c.address?.toLowerCase().includes(q)),
     );
   }, [complaints, search, statusFilter]);
 
-  if (loading)
+  if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f6f3ee] text-stone-600">
         <Loader2 className="h-6 w-6 animate-spin text-emerald-800" />
         Loading your dashboard...
       </div>
     );
+  }
 
-  if (pageError)
+  if (pageError) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f6f3ee] px-4 text-center">
         <p className="text-red-700">{pageError}</p>
+
         <button
           onClick={() => window.location.reload()}
           className="rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
@@ -346,12 +407,14 @@ export default function Home() {
         </button>
       </div>
     );
+  }
 
-  const heading = {
-    citizen: "Your reports",
-    collector: "Complaints assigned to you",
-    admin: "All complaints",
-  }[user.role];
+  const heading =
+    {
+      citizen: "Your reports",
+      collector: "Complaints assigned to you",
+      admin: "All complaints",
+    }[role] || "Dashboard";
 
   const statMeta = [
     ["Total", stats.total, ClipboardList, "from-emerald-900 to-teal-800"],
@@ -364,24 +427,74 @@ export default function Home() {
       {toast && (
         <div
           role="status"
-          className={`fixed bottom-6 right-6 z-50 rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg ${toast.type === "error" ? "bg-rose-700" : "bg-emerald-800"}`}
+          className={`fixed bottom-6 right-6 z-50 rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg ${
+            toast.type === "error" ? "bg-rose-700" : "bg-emerald-800"
+          }`}
         >
           {toast.message}
         </div>
       )}
 
+      {/* Header */}
       <header className="sticky top-0 z-20 border-b border-stone-200/80 bg-white/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-900 text-lime-300">
               <Leaf className="h-4 w-4" />
             </span>
+
             <span className="text-xl font-semibold tracking-tight text-emerald-950">
               CleanCity
             </span>
+
+            {role && (
+              <span className="hidden rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold capitalize text-emerald-900 sm:inline">
+                {role}
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-3">
-            {user.role === "citizen" && (
+
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Live Map Button */}
+            <Link
+              to="/map"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3.5 py-2 text-sm font-medium text-stone-700 shadow-sm transition hover:border-emerald-600 hover:bg-emerald-50 hover:text-emerald-900"
+            >
+              <Map className="h-4 w-4 text-emerald-700" />
+              <span className="hidden sm:inline">Live Map</span>
+            </Link>
+
+            {/* Waste Awareness Nav Link */}
+            <Link
+              to="/awareness"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3.5 py-2 text-sm font-medium text-stone-700 shadow-sm transition hover:border-emerald-600 hover:bg-emerald-50 hover:text-emerald-900"
+            >
+              <BookOpen className="h-4 w-4 text-emerald-700" />
+              <span className="hidden sm:inline">Waste Awareness</span>
+            </Link>
+
+            {/* Collector Notifications */}
+            {isCollector && (
+              <CollectorNotifications
+                user={user}
+                complaints={complaints}
+                onSelectComplaint={(c) => setSelected(c)}
+              />
+            )}
+
+            {/* Admin Panel Link */}
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="flex items-center gap-1.5 rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(6,95,70,0.8)] transition hover:bg-emerald-900"
+              >
+                <ShieldAlert className="h-4 w-4" />
+                <span className="hidden sm:inline">Admin Dashboard</span>
+              </Link>
+            )}
+
+            {/* Report Waste (Citizen Only) */}
+            {isCitizen && (
               <button
                 onClick={() => setCreating(true)}
                 className="rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(6,95,70,0.8)] transition hover:bg-emerald-900"
@@ -389,31 +502,105 @@ export default function Home() {
                 Report waste
               </button>
             )}
-            <div className="hidden text-right text-sm sm:block">
-              <div className="font-medium">{user.name}</div>
+
+            {/* User Profile info */}
+            <div className="hidden text-right text-sm md:block">
+              <div className="font-medium">{user?.name}</div>
               <div className="text-xs capitalize text-stone-500">
-                {user.role}
+                {user?.role}
               </div>
             </div>
+
+            {/* Logout */}
             <button
               onClick={handleLogout}
               className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm transition hover:bg-stone-100"
             >
               <LogOut className="h-3.5 w-3.5" />
-              Log out
+              <span className="hidden sm:inline">Log out</span>
             </button>
           </div>
         </div>
       </header>
 
+      {/* Admin Quick Banner */}
+      {isAdmin && (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm text-emerald-900">
+          Logged in as an administrator.{" "}
+          <Link
+            to="/admin"
+            className="font-semibold underline hover:text-emerald-950"
+          >
+            Open Full Admin Panel &rarr;
+          </Link>
+        </div>
+      )}
+
       <main className="mx-auto max-w-6xl px-4 py-8">
         <p className="text-xs font-medium uppercase tracking-[0.16em] text-emerald-800/80">
           Dashboard
         </p>
+
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">
           {heading}
         </h1>
 
+        {/* ================================================= */}
+        {/* QUICK ACTION BANNER: LIVE MAP & AWARENESS */}
+        {/* ================================================= */}
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {/* Map Card */}
+          <Link
+            to="/map"
+            className="group flex flex-col justify-between rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-900 to-teal-900 p-6 text-white shadow-md transition duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+          >
+            <div>
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-lime-300/30 bg-lime-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-lime-300">
+                <Globe className="h-3.5 w-3.5" />
+                <span>Geospatial Tracking</span>
+              </div>
+              <h2 className="mt-3 text-xl font-bold tracking-tight text-white">
+                Live Waste Reports Map
+              </h2>
+              <p className="mt-1 text-sm text-emerald-100/85">
+                Explore real-time GPS locations and statuses of waste complaints
+                across the entire city.
+              </p>
+            </div>
+
+            <div className="mt-5 flex items-center gap-2 text-sm font-bold text-lime-300 group-hover:underline">
+              <span>Open Interactive Map</span>
+              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+            </div>
+          </Link>
+
+          {/* Waste Awareness Card */}
+          <Link
+            to="/awareness"
+            className="group flex flex-col justify-between rounded-3xl border border-stone-200 bg-white p-6 shadow-md transition duration-200 hover:-translate-y-0.5 hover:border-emerald-500 hover:shadow-xl"
+          >
+            <div>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-800">
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>Civic Guidelines</span>
+              </div>
+              <h2 className="mt-3 text-xl font-bold tracking-tight text-stone-900">
+                Waste Segregation Guide
+              </h2>
+              <p className="mt-1 text-sm text-stone-600">
+                Learn 4-color bin segregation, check our item disposal
+                directory, and take a quick quiz.
+              </p>
+            </div>
+
+            <div className="mt-5 flex items-center gap-2 text-sm font-bold text-emerald-800 group-hover:underline">
+              <span>View Guidelines</span>
+              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+            </div>
+          </Link>
+        </div>
+
+        {/* Statistics Cards */}
         <div className="mt-6 grid grid-cols-3 gap-3">
           {statMeta.map(([label, value, Icon, gradient]) => (
             <div
@@ -427,6 +614,7 @@ export default function Home() {
                   </div>
                   <div className="text-sm text-stone-500">{label}</div>
                 </div>
+
                 <span
                   className={`flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br ${gradient} text-white`}
                 >
@@ -437,6 +625,7 @@ export default function Home() {
           ))}
         </div>
 
+        {/* Search & Filter */}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
@@ -447,6 +636,7 @@ export default function Home() {
               className={`${inputClass} pl-10`}
             />
           </div>
+
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -461,13 +651,16 @@ export default function Home() {
           </select>
         </div>
 
+        {/* Complaints Grid */}
         {filtered.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-dashed border-stone-300 bg-white/60 p-10 text-center text-stone-600">
             {complaints.length === 0
-              ? user.role === "citizen"
+              ? isCitizen
                 ? "You have not reported anything yet. Use Report waste to file your first complaint."
-                : "Nothing here yet."
-              : "No complaints match your filters."}
+                : isCollector
+                  ? "No complaints have been assigned to you yet."
+                  : "No complaints found in the system."
+              : "No complaints match your search filters."}
           </div>
         ) : (
           <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -483,29 +676,38 @@ export default function Home() {
                     className="h-40 w-full object-cover"
                   />
                 )}
+
                 <div className="flex flex-1 flex-col p-4">
                   <div className="flex items-center justify-between gap-2">
                     <StatusBadge status={c.status} />
+
                     <span
-                      className={`text-xs font-medium capitalize ${priorityStyle[c.priority]}`}
+                      className={`text-xs font-medium capitalize ${
+                        priorityStyle[c.priority] || "text-stone-500"
+                      }`}
                     >
                       {c.priority} priority
                     </span>
                   </div>
+
                   <h3 className="mt-3 font-semibold tracking-tight">
                     {c.title}
                   </h3>
+
                   <p className="mt-1 line-clamp-2 text-sm text-stone-600">
                     {c.description}
                   </p>
+
                   <p className="mt-3 text-xs text-stone-500">
-                    {CATEGORIES[c.category]} &middot; {c.address}
+                    {CATEGORIES[c.category] || c.category} &middot; {c.address}
                   </p>
+
                   <p className="mt-1 text-xs text-stone-500">
                     {c.assignedTo
                       ? `Assigned to ${c.assignedTo.name}`
                       : "Not assigned yet"}
                   </p>
+
                   <div className="mt-4 flex gap-2 pt-1">
                     <button
                       onClick={() => setSelected(c)}
@@ -513,7 +715,8 @@ export default function Home() {
                     >
                       Details
                     </button>
-                    {user.role === "admin" &&
+
+                    {isAdmin &&
                       !["resolved", "rejected"].includes(c.status) && (
                         <button
                           onClick={() => setAssigning(c)}
@@ -530,7 +733,7 @@ export default function Home() {
         )}
       </main>
 
-      {/* Details */}
+      {/* Details Modal */}
       {selected && (
         <Modal title={selected.title} onClose={() => setSelected(null)}>
           {selected.image && (
@@ -540,63 +743,82 @@ export default function Home() {
               className="mb-4 h-48 w-full rounded-2xl object-cover"
             />
           )}
+
           <div className="mb-3 flex items-center gap-2">
             <StatusBadge status={selected.status} />
             <span
-              className={`text-xs font-medium capitalize ${priorityStyle[selected.priority]}`}
+              className={`text-xs font-medium capitalize ${
+                priorityStyle[selected.priority] || "text-stone-500"
+              }`}
             >
               {selected.priority} priority
             </span>
           </div>
+
           <p className="text-sm leading-relaxed">{selected.description}</p>
+
           <dl className="mt-4 space-y-1 text-sm text-stone-600">
-            <div>Category: {CATEGORIES[selected.category]}</div>
-            <div>Address: {selected.address}</div>
-            <div>Reported: {new Date(selected.createdAt).toLocaleString()}</div>
-            {user.role !== "citizen" && selected.reportedBy && (
+            <div>
+              <strong className="text-stone-700">Category:</strong>{" "}
+              {CATEGORIES[selected.category] || selected.category}
+            </div>
+
+            <div>
+              <strong className="text-stone-700">Address:</strong>{" "}
+              {selected.address}
+            </div>
+
+            <div>
+              <strong className="text-stone-700">Reported:</strong>{" "}
+              {new Date(selected.createdAt).toLocaleString()}
+            </div>
+
+            {!isCitizen && selected.reportedBy && (
               <div>
-                Reporter: {selected.reportedBy.name} (
-                {selected.reportedBy.phone})
+                <strong className="text-stone-700">Reporter:</strong>{" "}
+                {selected.reportedBy.name} ({selected.reportedBy.phone})
               </div>
             )}
+
             <div>
-              Collector:{" "}
+              <strong className="text-stone-700">Collector:</strong>{" "}
               {selected.assignedTo
                 ? selected.assignedTo.name
                 : "Not assigned yet"}
             </div>
           </dl>
 
-          {(user.role === "admin" || user.role === "collector") && (
+          {/* Status update options for Collector & Admin */}
+          {(isAdmin || isCollector) && (
             <div className="mt-5 border-t border-stone-200 pt-4">
               <h3 className="mb-2 text-sm font-semibold">Update status</h3>
+
               <div className="flex flex-wrap gap-2">
-                {(user.role === "admin" ? STATUSES : COLLECTOR_STATUSES).map(
-                  (s) => (
-                    <button
-                      key={s}
-                      disabled={selected.status === s}
-                      onClick={() => updateStatus(selected._id, s)}
-                      className="rounded-xl border border-stone-200 px-3 py-1.5 text-sm capitalize transition hover:bg-stone-100 disabled:border-emerald-800 disabled:bg-emerald-800 disabled:text-white"
-                    >
-                      {s}
-                    </button>
-                  ),
-                )}
+                {(isAdmin ? STATUSES : COLLECTOR_STATUSES).map((s) => (
+                  <button
+                    key={s}
+                    disabled={selected.status === s}
+                    onClick={() => updateStatus(selected._id, s)}
+                    className="rounded-xl border border-stone-200 px-3 py-1.5 text-sm capitalize transition hover:bg-stone-100 disabled:border-emerald-800 disabled:bg-emerald-800 disabled:text-white"
+                  >
+                    {s}
+                  </button>
+                ))}
               </div>
             </div>
           )}
         </Modal>
       )}
 
-      {/* Assign */}
+      {/* Assign Modal */}
       {assigning && (
         <Modal title="Assign a collector" onClose={() => setAssigning(null)}>
           <p className="mb-3 text-sm text-stone-600">{assigning.title}</p>
+
           {collectors.length === 0 ? (
             <p className="text-sm text-stone-600">
-              No active collectors yet. Change a user's role to collector in the
-              database.
+              No active collectors found. Create a collector account to assign
+              tasks.
             </p>
           ) : (
             <ul className="space-y-2">
@@ -616,7 +838,7 @@ export default function Home() {
         </Modal>
       )}
 
-      {/* Create */}
+      {/* Create Modal */}
       {creating && (
         <Modal
           title="Report a waste problem"
