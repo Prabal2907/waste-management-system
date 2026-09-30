@@ -1,15 +1,16 @@
 const express = require("express");
-const router = express.Router();
 
 const {
   register,
   login,
   logout,
   getMe,
-} = require("../contollers/authcontoller");
-const { protect } = require("../middlewares/authmiddlewares");
+} = require("../controllers/authcontroller");
 
-// Base path: /api/auth
+const { protect } = require("../middleware/authmiddleware");
+
+const router = express.Router();
+
 router.post("/register", register);
 router.post("/login", login);
 router.post("/logout", logout);

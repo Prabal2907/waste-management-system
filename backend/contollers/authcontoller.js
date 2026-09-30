@@ -3,23 +3,43 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
 // ---------------------------------------------------------------
-// Helpers
+// Environment
 // ---------------------------------------------------------------
 
 const isProduction = process.env.NODE_ENV === "production";
 
-// Cookie settings (used for both setting and clearing the cookie)
+// ---------------------------------------------------------------
+// Cookie settings
+// ---------------------------------------------------------------
+// Localhost:
+//   secure: false
+//   sameSite: "lax"
+//
+// Production (Vercel frontend + Render backend):
+//   secure: true
+//   sameSite: "none"
+//
+// SameSite=None is required because the frontend and backend
+// are on different domains.
+// ---------------------------------------------------------------
+
 const cookieOptions = {
-  httpOnly: true, // JavaScript in the browser cannot read this cookie
-  secure: isProduction, // only sent over HTTPS in production
+  httpOnly: true,
+  secure: isProduction,
   sameSite: isProduction ? "none" : "lax",
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+  maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
-// Create a signed JWT containing only the user's id and role
+// ---------------------------------------------------------------
+// Generate JWT
+// ---------------------------------------------------------------
+
 const generateToken = (user) => {
   return jwt.sign(
-    { id: user._id, role: user.role?.toLowerCase() },
+    {
+      id: user._id,
+      role: user.role?.toLowerCase(),
+    },
     process.env.JWT_SECRET,
     {
       expiresIn: process.env.JWT_EXPIRES_IN || "7d",
@@ -27,7 +47,10 @@ const generateToken = (user) => {
   );
 };
 
-// Build a safe user object (never includes the password)
+// ---------------------------------------------------------------
+// Sanitize user
+// ---------------------------------------------------------------
+
 const sanitizeUser = (user) => ({
   id: user._id,
   _id: user._id,
@@ -43,22 +66,25 @@ const sanitizeUser = (user) => ({
   updatedAt: user.updatedAt,
 });
 
-// Format Mongoose validation errors into a readable message
+// ---------------------------------------------------------------
+// Validation error helper
+// ---------------------------------------------------------------
+
 const getValidationMessage = (error) =>
   Object.values(error.errors)
     .map((err) => err.message)
     .join(", ");
 
 // ---------------------------------------------------------------
-// @desc    Register a new user (citizen / collector / admin)
-// @route   POST /api/auth/register
-// @access  Public
+// REGISTER
+// POST /api/auth/register
+// Public
 // ---------------------------------------------------------------
+
 exports.register = async (req, res) => {
   try {
     const { name, email, password, phone, role, address, location } = req.body;
 
-    // Basic checks
     if (!name || !email || !password || !phone) {
       return res.status(400).json({
         success: false,
@@ -73,15 +99,17 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Validate and normalize role (default to "citizen" if not supplied)
     const validRoles = ["citizen", "collector", "admin"];
+
     const normalizedRole =
       role && validRoles.includes(role.toLowerCase())
         ? role.toLowerCase()
         : "citizen";
 
-    // Check if the email is already registered
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const existingUser = await User.findOne({
+      email: email.toLowerCase().trim(),
+    });
+
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -89,11 +117,9 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create the user with the requested role
     const user = await User.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
@@ -105,8 +131,8 @@ exports.register = async (req, res) => {
       isActive: true,
     });
 
-    // Log the user in right away
     const token = generateToken(user);
+
     res.cookie("token", token, cookieOptions);
 
     return res.status(201).json({
@@ -130,6 +156,7 @@ exports.register = async (req, res) => {
     }
 
     console.error("Register error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Server error while registering",
@@ -138,10 +165,11 @@ exports.register = async (req, res) => {
 };
 
 // ---------------------------------------------------------------
-// @desc    Login a user
-// @route   POST /api/auth/login
-// @access  Public
+// LOGIN
+// POST /api/auth/login
+// Public
 // ---------------------------------------------------------------
+
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -165,6 +193,7 @@ exports.login = async (req, res) => {
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
+
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -180,6 +209,7 @@ exports.login = async (req, res) => {
     }
 
     const token = generateToken(user);
+
     res.cookie("token", token, cookieOptions);
 
     return res.status(200).json({
@@ -189,6 +219,7 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Server error while logging in",
@@ -197,10 +228,11 @@ exports.login = async (req, res) => {
 };
 
 // ---------------------------------------------------------------
-// @desc    Logout the current user
-// @route   POST /api/auth/logout
-// @access  Public
+// LOGOUT
+// POST /api/auth/logout
+// Public
 // ---------------------------------------------------------------
+
 exports.logout = (req, res) => {
   res.clearCookie("token", {
     httpOnly: cookieOptions.httpOnly,
@@ -215,10 +247,11 @@ exports.logout = (req, res) => {
 };
 
 // ---------------------------------------------------------------
-// @desc    Get the currently logged-in user
-// @route   GET /api/auth/me
-// @access  Private
+// GET CURRENT USER
+// GET /api/auth/me
+// Private
 // ---------------------------------------------------------------
+
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -236,6 +269,7 @@ exports.getMe = async (req, res) => {
     });
   } catch (error) {
     console.error("GetMe error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Server error while fetching user",
@@ -244,10 +278,11 @@ exports.getMe = async (req, res) => {
 };
 
 // ---------------------------------------------------------------
-// @desc    Get all collectors (admin only)
-// @route   GET /api/users/collectors
-// @access  Private (Admin)
+// GET COLLECTORS
+// GET /api/users/collectors
+// Private - Admin
 // ---------------------------------------------------------------
+
 exports.getCollectors = async (req, res) => {
   try {
     const collectors = await User.find({
@@ -262,6 +297,7 @@ exports.getCollectors = async (req, res) => {
     });
   } catch (error) {
     console.error("getCollectors error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Server error while fetching collectors",
